@@ -5,6 +5,17 @@ import (
 	"os"
 )
 
+var StocksCsvColumns = []string{
+	"time",
+	"symbol",
+	"open",
+	"close",
+	"high",
+	"low",
+	"volume",
+	"data_provider",
+}
+
 func GetCsvColumn(filePath string, column string) ([]string, error) {
 	f, err := os.Open(filePath)
 	if err != nil {

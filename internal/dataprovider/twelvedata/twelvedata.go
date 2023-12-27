@@ -1,6 +1,7 @@
 package twelvedata
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/premia-ai/cli/internal/dataprovider"
+	"github.com/premia-ai/cli/internal/helper"
 )
 
 type Timespan string
@@ -69,19 +71,17 @@ func DownloadCandles(apiParams *dataprovider.ApiParams, filePath string) error {
 		return err
 	}
 
-	header := fmt.Sprintln(
-		"time,symbol,open,close,high,low,volumee,data_provider",
-	)
+	writer := csv.NewWriter(seedFile)
+	defer writer.Flush()
 
-	_, err = seedFile.WriteString(header)
+	err = writer.Write(helper.StocksCsvColumns)
 	if err != nil {
 		return err
 	}
 
 	for _, instrument := range aggregates {
 		for _, timeSeriesValue := range instrument.TimeSeries {
-			data := fmt.Sprintf(
-				"%s,%s,%s,%s,%s,%s,%s,%s,%s\n",
+			row := []string{
 				timeSeriesValue.DateTime,
 				instrument.MetaData.Symbol,
 				timeSeriesValue.Open,
@@ -90,11 +90,9 @@ func DownloadCandles(apiParams *dataprovider.ApiParams, filePath string) error {
 				timeSeriesValue.Low,
 				timeSeriesValue.Volume,
 				instrument.MetaData.Currency,
-				dataprovider.TwelveData,
-			)
-
-			_, err := seedFile.WriteString(data)
-
+				string(dataprovider.TwelveData),
+			}
+			err = writer.Write(row)
 			if err != nil {
 				return err
 			}

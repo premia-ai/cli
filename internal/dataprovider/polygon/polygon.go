@@ -2,16 +2,19 @@ package polygon
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	polygon "github.com/polygon-io/client-go/rest"
 	"github.com/polygon-io/client-go/rest/iter"
 	"github.com/polygon-io/client-go/rest/models"
 	"github.com/premia-ai/cli/internal/dataprovider"
+	"github.com/premia-ai/cli/internal/helper"
 )
 
 const currency = "USD"
@@ -46,32 +49,28 @@ func DownloadCandles(apiParams *dataprovider.ApiParams, filePath string) error {
 		Multiplier: apiParams.Quantity,
 	})
 
-	header := fmt.Sprintln(
-		"time,symbol,open,close,high,low,volumee,data_provider",
-	)
+	writer := csv.NewWriter(seedFile)
+	defer writer.Flush()
 
-	_, err = seedFile.WriteString(header)
+	err = writer.Write(helper.StocksCsvColumns)
 	if err != nil {
 		return err
 	}
 
 	for aggregates.Next() {
 		item := aggregates.Item()
-		data := fmt.Sprintf(
-			"%s,%s,%f,%f,%f,%f,%d,%s,%s\n",
+		row := []string{
 			time.Time(item.Timestamp).Format(time.RFC3339),
 			apiParams.Tickers[0],
-			item.Open,
-			item.Close,
-			item.High,
-			item.Low,
-			int(item.Volume),
+			strconv.FormatFloat(item.Open, 'f', -1, 64),
+			strconv.FormatFloat(item.Close, 'f', -1, 64),
+			strconv.FormatFloat(item.High, 'f', -1, 64),
+			strconv.FormatFloat(item.Low, 'f', -1, 64),
+			strconv.FormatInt(int64(item.Volume), 10),
 			currency,
-			dataprovider.Polygon,
-		)
-
-		_, err := seedFile.WriteString(data)
-
+			string(dataprovider.Polygon),
+		}
+		err = writer.Write(row)
 		if err != nil {
 			return err
 		}
