@@ -81,12 +81,36 @@ func Initialize() error {
 		return err
 	}
 
-	// Create raw data table migration
+	add_stocks, err := askBoolQuestion("Do you want to store stock price data?")
+
+	if err != nil {
+		return err
+	}
+
+	if add_stocks == false {
+		return nil
+	}
+
+	err = addStockMigrations()
+	if err != nil {
+		return err
+	}
+
+	err = applyMigrations(migrationsDir, postgresUrl)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func addStockMigrations() error {
 	var timespanUnits []string
 	for _, timespan := range dataprovider.Timespans {
 		timespanUnits = append(timespanUnits, timespan.Unit)
 	}
 
+	// Create raw data table migration
 	timespanUnit, err := askSelectQuestion(
 		"What is the timespan of your data points?",
 		timespanUnits,
@@ -114,6 +138,8 @@ func Initialize() error {
 		return err
 	}
 
+	// Create aggregate table
+	// TODO: The user should be able to create multiple aggregate tables
 	baseTable := fmt.Sprintf(
 		"stocks_1_%s_candles",
 		timespan.Unit,
@@ -132,8 +158,6 @@ func Initialize() error {
 		return err
 	}
 
-	// Create aggregate table
-	// TODO: The user should be able to create multiple aggregate tables
 	addAggregate, err := askBoolQuestion(
 		"Do you want to create an aggregate based on your raw data?",
 	)
@@ -206,12 +230,6 @@ func Initialize() error {
 			return err
 		}
 	}
-
-	err = applyMigrations(migrationsDir, postgresUrl)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
