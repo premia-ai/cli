@@ -456,7 +456,7 @@ func askSelectQuestion(question string, options []string) (string, error) {
 
 		scanner.Scan()
 		response := scanner.Text()
-		if isInSlice(options, response) {
+		if helper.IsInSlice(options, response) {
 			return response, nil
 		}
 

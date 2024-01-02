@@ -48,3 +48,13 @@ func GetCsvColumn(filePath string, column string) ([]string, error) {
 
 	return result, nil
 }
+
+func IsInSlice(slice []string, value string) bool {
+	for _, sliceValue := range slice {
+		if value == sliceValue {
+			return true
+		}
+	}
+
+	return false
+}
