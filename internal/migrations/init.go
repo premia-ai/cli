@@ -25,9 +25,17 @@ import (
 	"github.com/premia-ai/cli/resource"
 )
 
+type InstrumentType string
+
+const (
+	Stocks  InstrumentType = "stocks"
+	Options InstrumentType = "options"
+)
+
 type SqlTemplateData struct {
+	InstrumentType InstrumentType
 	Quantity       int
-	TimespanUnit   string
+	TimeUnit       string
 	ReferenceTable string
 }
 
@@ -97,8 +105,9 @@ func Initialize() error {
 	err = CreateMigration(
 		"add_candles",
 		SqlTemplateData{
-			Quantity:     1,
-			TimespanUnit: timespan.Unit,
+			InstrumentType: Stocks,
+			Quantity:       1,
+			TimeUnit:       timespan.Unit,
 		},
 	)
 	if err != nil {
@@ -148,8 +157,9 @@ func Initialize() error {
 		err = CreateMigration(
 			"add_aggregate_candles",
 			SqlTemplateData{
+				InstrumentType: Stocks,
 				Quantity:       1,
-				TimespanUnit:   aggregateTimespanInfo.Unit,
+				TimeUnit:       aggregateTimespanInfo.Unit,
 				ReferenceTable: baseTable,
 			},
 		)
@@ -184,8 +194,8 @@ func Initialize() error {
 		err = CreateMigration(
 			featureName,
 			SqlTemplateData{
-				Quantity:     1,
-				TimespanUnit: timespan.Unit,
+				Quantity: 1,
+				TimeUnit: timespan.Unit,
 				ReferenceTable: fmt.Sprintf(
 					"stocks_1_%s_candles",
 					timespan.Unit,

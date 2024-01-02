@@ -1,4 +1,4 @@
-CREATE MATERIALIZED VIEW stocks_{{ .Quantity }}_{{ .TimeUnit }}_candles
+CREATE MATERIALIZED VIEW {{ .InstrumentType }}_{{ .Quantity }}_{{ .TimeUnit }}_candles
 WITH (timescaledb.continuous) AS
     SELECT
         time_bucket('{{ .Quantity }} {{ .TimeUnit }}', time) AS bucket,
@@ -13,7 +13,7 @@ WITH (timescaledb.continuous) AS
     GROUP BY bucket, currency, symbol
 WITH NO DATA;
 
-SELECT add_continuous_aggregate_policy('stocks_{{ .Quantity }}_{{ .TimeUnit }}_candles',
+SELECT add_continuous_aggregate_policy('{{ .InstrumentType }}_{{ .Quantity }}_{{ .TimeUnit }}_candles',
     start_offset => INTERVAL '3 day',
     end_offset => INTERVAL '1 day',
     schedule_interval => INTERVAL '1 day');
