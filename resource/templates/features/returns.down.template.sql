@@ -1,1 +1,1 @@
-DROP VIEW IF EXISTS stocks_{{ .Quantity }}_{{ .TimeUnit }}_returns;
+DROP VIEW IF EXISTS {{ .InstrumentType }}_{{ .Quantity }}_{{ .TimeUnit }}_returns;

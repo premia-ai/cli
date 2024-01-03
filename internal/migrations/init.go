@@ -25,15 +25,8 @@ import (
 	"github.com/premia-ai/cli/resource"
 )
 
-type InstrumentType string
-
-const (
-	Stocks  InstrumentType = "stocks"
-	Options InstrumentType = "options"
-)
-
 type SqlTemplateData struct {
-	InstrumentType InstrumentType
+	InstrumentType config.InstrumentType
 	Quantity       int
 	TimeUnit       string
 	ReferenceTable string
@@ -91,7 +84,24 @@ func Initialize() error {
 		return nil
 	}
 
-	err = addStockMigrations()
+	err = addInstrumentMigrations(config.Stocks)
+	if err != nil {
+		return err
+	}
+
+	add_options, err := askBoolQuestion(
+		"Do you want to store option price data?",
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if add_options == false {
+		return nil
+	}
+
+	err = addInstrumentMigrations(config.Options)
 	if err != nil {
 		return err
 	}
@@ -104,7 +114,7 @@ func Initialize() error {
 	return nil
 }
 
-func addStockMigrations() error {
+func addInstrumentMigrations(instrumentType config.InstrumentType) error {
 	var timespanUnits []string
 	for _, timespan := range dataprovider.Timespans {
 		timespanUnits = append(timespanUnits, timespan.Unit)
@@ -129,7 +139,7 @@ func addStockMigrations() error {
 	err = CreateMigration(
 		"add_candles",
 		SqlTemplateData{
-			InstrumentType: Stocks,
+			InstrumentType: instrumentType,
 			Quantity:       1,
 			TimeUnit:       timespan.Unit,
 		},
@@ -141,19 +151,34 @@ func addStockMigrations() error {
 	// Create aggregate table
 	// TODO: The user should be able to create multiple aggregate tables
 	baseTable := fmt.Sprintf(
-		"stocks_1_%s_candles",
+		"%s_1_%s_candles",
+		instrumentType,
 		timespan.Unit,
 	)
 
-	err = config.UpdateConfigFile(config.CreateConfigFileData(baseTable, timespan.Unit))
+	err = config.UpdateConfig(
+		instrumentType,
+		&config.InstrumentConfig{
+			BaseTable:    baseTable,
+			TimespanUnit: timespan.Unit,
+		},
+	)
 	if err != nil {
 		return err
 	}
 
-	err = CreateMigration(
-		"add_companies",
-		SqlTemplateData{},
-	)
+	switch instrumentType {
+	case config.Stocks:
+		err = CreateMigration(
+			"add_companies",
+			SqlTemplateData{},
+		)
+	case config.Options:
+		err = CreateMigration(
+			"add_contracts",
+			SqlTemplateData{},
+		)
+	}
 	if err != nil {
 		return err
 	}
@@ -181,7 +206,7 @@ func addStockMigrations() error {
 		err = CreateMigration(
 			"add_aggregate_candles",
 			SqlTemplateData{
-				InstrumentType: Stocks,
+				InstrumentType: instrumentType,
 				Quantity:       1,
 				TimeUnit:       aggregateTimespanInfo.Unit,
 				ReferenceTable: baseTable,
@@ -218,12 +243,10 @@ func addStockMigrations() error {
 		err = CreateMigration(
 			featureName,
 			SqlTemplateData{
-				Quantity: 1,
-				TimeUnit: timespan.Unit,
-				ReferenceTable: fmt.Sprintf(
-					"stocks_1_%s_candles",
-					timespan.Unit,
-				),
+				InstrumentType: instrumentType,
+				Quantity:       1,
+				TimeUnit:       timespan.Unit,
+				ReferenceTable: baseTable,
 			},
 		)
 		if err != nil {
@@ -233,6 +256,9 @@ func addStockMigrations() error {
 	return nil
 }
 
+// TODO: Make Seed work with both stocks and options, right now it works just
+// with stocks
+// TODO: Check which tables have been initialized instead of clumsily failing
 func Seed() error {
 	configFileData, err := config.Config()
 	if err != nil {
@@ -245,7 +271,9 @@ func Seed() error {
 
 	var timespan dataprovider.TimespanInfo
 	for _, f := range dataprovider.Timespans {
-		if f.Unit == configFileData.TimespanUnit {
+		// TODO: There needs to be a fix to avoid failure when stocks tables
+		// are not set up
+		if f.Unit == configFileData.Instruments[config.Stocks].TimespanUnit {
 			timespan = f
 		}
 	}
@@ -314,7 +342,12 @@ func Seed() error {
 				return err
 			}
 
-			err = copyFileToTable(seedFilePath, configFileData.BaseTable)
+			// TODO: There needs to be a fix to avoid failure when stocks tables
+			// are not set up
+			err = copyFileToTable(
+				seedFilePath,
+				configFileData.Instruments[config.Stocks].BaseTable,
+			)
 			if err != nil {
 				return err
 			}
@@ -382,7 +415,12 @@ func Seed() error {
 				return err
 			}
 
-			err = copyFileToTable(seedFilePath, configFileData.BaseTable)
+			// TODO: There needs to be a fix to avoid failure when stocks tables
+			// are not set up
+			err = copyFileToTable(
+				seedFilePath,
+				configFileData.Instruments[config.Stocks].BaseTable,
+			)
 			if err != nil {
 				return err
 			}
@@ -395,7 +433,9 @@ func Seed() error {
 				return err
 			}
 
-			err = copyFileToTable(seedFilePath, configFileData.BaseTable)
+			// TODO: There needs to be a fix to avoid failure when stocks tables
+			// are not set up
+			err = copyFileToTable(seedFilePath, configFileData.Instruments[config.Stocks].BaseTable)
 			if err != nil {
 				return err
 			}

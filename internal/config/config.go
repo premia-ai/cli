@@ -4,8 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
+)
+
+type InstrumentType string
+
+const (
+	Stocks  InstrumentType = "stocks"
+	Options InstrumentType = "options"
 )
 
 func getDir(dirPath string, createIfMissing bool) (string, error) {
@@ -46,25 +54,47 @@ func TmpDir(createIfMissing bool) (string, error) {
 }
 
 type ConfigFileData struct {
-	Version      string `json:"version"`
+	Version     string                              `json:"version"`
+	Instruments map[InstrumentType]InstrumentConfig `json:"instruments,omitempty"`
+}
+
+type InstrumentConfig struct {
 	BaseTable    string `json:"baseTable,omitempty"`
 	TimespanUnit string `json:"timespan,omitempty"`
 }
 
 func CreateConfigFileData(baseTable, timespanUnit string) *ConfigFileData {
 	return &ConfigFileData{
-		Version:      "1",
-		BaseTable:    baseTable,
-		TimespanUnit: timespanUnit,
+		Version: "1",
 	}
 }
 
-func UpdateConfigFile(data *ConfigFileData) error {
+func UpdateConfig(
+	instrument InstrumentType,
+	data *InstrumentConfig,
+) error {
 	configFile, err := configFile()
 	if err != nil {
 		return err
 	}
 	defer configFile.Close()
+
+	jsonData, err := io.ReadAll(configFile)
+	if err != nil {
+		return err
+	}
+
+	var configData ConfigFileData
+	err = json.Unmarshal(jsonData, &configData)
+	if err != nil {
+		return err
+	}
+
+	// Set potentially empty map
+	if configData.Instruments == nil {
+		configData.Instruments = make(map[InstrumentType]InstrumentConfig)
+	}
+	configData.Instruments[instrument] = *data
 
 	err = configFile.Truncate(0)
 	if err != nil {
@@ -75,7 +105,7 @@ func UpdateConfigFile(data *ConfigFileData) error {
 		return err
 	}
 
-	fileContent, err := jsonPrettyPrint(data)
+	fileContent, err := jsonPrettyPrint(configData)
 	if err != nil {
 		return err
 	}

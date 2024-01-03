@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW stocks_{{ .Quantity }}_{{ .TimeUnit }}_averages AS
+CREATE OR REPLACE VIEW {{ .InstrumentType }}_{{ .Quantity }}_{{ .TimeUnit }}_averages AS
 SELECT time, symbol, average
 FROM (
      SELECT

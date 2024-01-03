@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW stocks_{{ .Quantity }}_{{ .TimeUnit }}_returns AS
+CREATE OR REPLACE VIEW {{ .InstrumentType }}_{{ .Quantity }}_{{ .TimeUnit }}_returns AS
 SELECT 
     "time", 
     symbol, 
