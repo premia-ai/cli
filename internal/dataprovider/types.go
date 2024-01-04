@@ -69,4 +69,5 @@ type ApiParams struct {
 	Quantity int
 	From     time.Time
 	To       time.Time
+	Table    string
 }

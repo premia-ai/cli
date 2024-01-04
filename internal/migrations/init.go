@@ -2,7 +2,6 @@ package migrations
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,7 +14,6 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/premia-ai/cli/internal/config"
 	"github.com/premia-ai/cli/internal/dataprovider"
@@ -260,10 +258,11 @@ func addInstrumentMigrations(instrumentType config.InstrumentType) error {
 // with stocks
 // TODO: Check which tables have been initialized instead of clumsily failing
 func Seed() error {
-	configFileData, err := config.Config()
+	configData, err := config.Config()
 	if err != nil {
 		return err
 	}
+	// TODO: Move this check out of the function
 	shouldSeedDb, err := askBoolQuestion("Would you like to seed the database?")
 	if err != nil {
 		return err
@@ -273,20 +272,13 @@ func Seed() error {
 	for _, f := range dataprovider.Timespans {
 		// TODO: There needs to be a fix to avoid failure when stocks tables
 		// are not set up
-		if f.Unit == configFileData.Instruments[config.Stocks].TimespanUnit {
+		if f.Unit == configData.Instruments[config.Stocks].TimespanUnit {
 			timespan = f
 		}
 	}
 
 	// TODO: Move this to a Seed function and call it from the cmd directly
 	if shouldSeedDb {
-		tmpDir, err := config.TmpDir(true)
-		if err != nil {
-			return err
-		}
-
-		seedFilePath := path.Join(tmpDir, "candles_seed.csv")
-
 		dataProviders := []string{
 			string(dataprovider.Polygon),
 			string(dataprovider.TwelveData),
@@ -331,23 +323,14 @@ func Seed() error {
 				return err
 			}
 
-			err = polygon.DownloadCandles(&dataprovider.ApiParams{
+			err = polygon.ImportStocks(&dataprovider.ApiParams{
 				Tickers:  []string{ticker},
 				From:     fromTime,
 				To:       toTime,
 				Timespan: timespan.Value,
 				Quantity: 1,
-			}, seedFilePath)
-			if err != nil {
-				return err
-			}
-
-			// TODO: There needs to be a fix to avoid failure when stocks tables
-			// are not set up
-			err = copyFileToTable(
-				seedFilePath,
-				configFileData.Instruments[config.Stocks].BaseTable,
-			)
+				Table:    configData.Instruments[config.Stocks].BaseTable,
+			})
 			if err != nil {
 				return err
 			}
@@ -404,27 +387,17 @@ func Seed() error {
 				return err
 			}
 
-			err = twelvedata.DownloadCandles(&dataprovider.ApiParams{
+			err = twelvedata.ImportStocks(&dataprovider.ApiParams{
 				Tickers:  tickers,
 				Timespan: timespan.Value,
 				Quantity: 1,
 				From:     fromTime,
 				To:       toTime,
-			}, seedFilePath)
+				Table:    configData.Instruments[config.Stocks].BaseTable,
+			})
 			if err != nil {
 				return err
 			}
-
-			// TODO: There needs to be a fix to avoid failure when stocks tables
-			// are not set up
-			err = copyFileToTable(
-				seedFilePath,
-				configFileData.Instruments[config.Stocks].BaseTable,
-			)
-			if err != nil {
-				return err
-			}
-
 		} else if provider == dataProviders[2] {
 			seedFilePath, err := askInputQuestion(
 				"What is the path to your CSV file?",
@@ -435,41 +408,12 @@ func Seed() error {
 
 			// TODO: There needs to be a fix to avoid failure when stocks tables
 			// are not set up
-			err = copyFileToTable(seedFilePath, configFileData.Instruments[config.Stocks].BaseTable)
+			err = helper.CopyFileToTable(seedFilePath, configData.Instruments[config.Stocks].BaseTable)
 			if err != nil {
 				return err
 			}
 		}
 	}
-	return nil
-}
-
-func copyFileToTable(filePath, baseTable string) error {
-	postgresUrl := os.Getenv("POSTGRES_URL")
-	if postgresUrl == "" {
-		return errors.New("Please set POSTGRES_URL environment variable")
-	}
-
-	conn, err := pgx.Connect(context.Background(), postgresUrl)
-	if err != nil {
-		return errors.New(fmt.Sprintf(
-			"Unable to connect to database: %v\n", err,
-		))
-	}
-	defer conn.Close(context.Background())
-
-	_, err = conn.Exec(
-		context.Background(),
-		fmt.Sprintf(
-			"COPY %s FROM '%s' DELIMITER ',' CSV HEADER;",
-			baseTable,
-			filePath,
-		),
-	)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 

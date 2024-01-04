@@ -2,7 +2,6 @@ package polygon
 
 import (
 	"context"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
@@ -10,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	polygon "github.com/polygon-io/client-go/rest"
 	"github.com/polygon-io/client-go/rest/iter"
 	"github.com/polygon-io/client-go/rest/models"
@@ -17,31 +17,85 @@ import (
 	"github.com/premia-ai/cli/internal/helper"
 )
 
+type RowSrcMeta struct {
+	iter   *iter.Iter[models.Agg]
+	ticker string
+}
+
+type RowSrc struct {
+	meta   RowSrcMeta
+	values []any
+	err    error
+}
+
+func (r *RowSrc) Next() bool {
+	next := r.meta.iter.Next()
+	if next == false {
+		return false
+	}
+
+	if r.meta.iter.Err() != nil {
+		r.err = r.meta.iter.Err()
+		return false
+	}
+
+	item := r.meta.iter.Item()
+	row := helper.PriceDataRow{
+		Time:         time.Time(item.Timestamp),
+		Open:         strconv.FormatFloat(item.Open, 'f', -1, 64),
+		Close:        strconv.FormatFloat(item.Close, 'f', -1, 64),
+		High:         strconv.FormatFloat(item.High, 'f', -1, 64),
+		Low:          strconv.FormatFloat(item.Low, 'f', -1, 64),
+		Volume:       strconv.FormatInt(int64(item.Volume), 10),
+		Currency:     currency,
+		DataProvider: string(dataprovider.Polygon),
+		Symbol:       r.meta.ticker,
+	}
+
+	r.values = row.Slice()
+	return true
+}
+
+func (r *RowSrc) Values() ([]any, error) {
+	return r.values, r.err
+}
+
+func (r *RowSrc) Err() error {
+	return r.err
+}
+
+func NewRowSrc(ticker string, value *iter.Iter[models.Agg]) *RowSrc {
+	return &RowSrc{
+		meta: RowSrcMeta{
+			iter:   value,
+			ticker: ticker,
+		},
+	}
+}
+
 const currency = "USD"
 
 // TODO: Extend polygon to allow for multiple tickers
-func DownloadCandles(apiParams *dataprovider.ApiParams, filePath string) error {
-	var seedFile *os.File
-	_, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
-		seedFile, err = os.Create(filePath)
-		if err != nil {
-			return err
-		}
-	} else {
-		seedFile, err = os.OpenFile(filePath, os.O_APPEND, 0600)
-		if err != nil {
-			return err
-		}
-	}
-	defer seedFile.Close()
-
+func ImportStocks(apiParams *dataprovider.ApiParams) error {
 	timespan, err := mapTimespan(apiParams.Timespan)
 	if err != nil {
 		return err
 	}
 
-	aggregates := getAggregates(&models.ListAggsParams{
+	postgresUrl := os.Getenv("POSTGRES_URL")
+	if postgresUrl == "" {
+		return errors.New("Please set POSTGRES_URL environment variable")
+	}
+
+	conn, err := pgx.Connect(context.Background(), postgresUrl)
+	if err != nil {
+		return errors.New(fmt.Sprintf(
+			"Unable to connect to database: %v\n", err,
+		))
+	}
+	defer conn.Close(context.Background())
+
+	candles := getStockCandles(&models.ListAggsParams{
 		Ticker:     apiParams.Tickers[0],
 		From:       models.Millis(apiParams.From),
 		To:         models.Millis(apiParams.To),
@@ -49,40 +103,20 @@ func DownloadCandles(apiParams *dataprovider.ApiParams, filePath string) error {
 		Multiplier: apiParams.Quantity,
 	})
 
-	writer := csv.NewWriter(seedFile)
-	defer writer.Flush()
-
-	err = writer.Write(helper.StocksCsvColumns)
+	_, err = conn.CopyFrom(
+		context.Background(),
+		pgx.Identifier{apiParams.Table},
+		helper.PriceDataColumnNames,
+		NewRowSrc(apiParams.Tickers[0], candles),
+	)
 	if err != nil {
 		return err
-	}
-
-	for aggregates.Next() {
-		item := aggregates.Item()
-		row := []string{
-			time.Time(item.Timestamp).Format(time.RFC3339),
-			apiParams.Tickers[0],
-			strconv.FormatFloat(item.Open, 'f', -1, 64),
-			strconv.FormatFloat(item.Close, 'f', -1, 64),
-			strconv.FormatFloat(item.High, 'f', -1, 64),
-			strconv.FormatFloat(item.Low, 'f', -1, 64),
-			strconv.FormatInt(int64(item.Volume), 10),
-			currency,
-			string(dataprovider.Polygon),
-		}
-		err = writer.Write(row)
-		if err != nil {
-			return err
-		}
-	}
-	if aggregates.Err() != nil {
-		return aggregates.Err()
 	}
 
 	return nil
 }
 
-func getAggregates(apiParams *models.ListAggsParams) *iter.Iter[models.Agg] {
+func getStockCandles(apiParams *models.ListAggsParams) *iter.Iter[models.Agg] {
 	polygon_api_key := os.Getenv("POLYGON_API_KEY")
 	if polygon_api_key == "" {
 		// TODO: Set up an alternative to enter the API key in the CLI via

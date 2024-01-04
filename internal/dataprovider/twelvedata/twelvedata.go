@@ -1,7 +1,7 @@
 package twelvedata
 
 import (
-	"encoding/csv"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,9 +13,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/premia-ai/cli/internal/dataprovider"
 	"github.com/premia-ai/cli/internal/helper"
 )
+
+const apiTimestamp = "2006-01-02 15:04:05"
 
 type Timespan string
 
@@ -27,7 +30,7 @@ const (
 	Month  Timespan = "month"
 )
 
-type Instrument struct {
+type ApiResponse struct {
 	MetaData   MetaData          `json:"meta"`
 	TimeSeries []TimeSeriesValue `json:"values"`
 }
@@ -50,59 +53,72 @@ type TimeSeriesValue struct {
 	Volume   string
 }
 
-func DownloadCandles(apiParams *dataprovider.ApiParams, filePath string) error {
-	var seedFile *os.File
-	_, err := os.Stat(filePath)
-	if os.IsNotExist(err) {
-		seedFile, err = os.Create(filePath)
-		if err != nil {
-			return err
-		}
-	} else {
-		seedFile, err = os.OpenFile(filePath, os.O_APPEND, 0600)
-		if err != nil {
-			return err
-		}
-	}
-	defer seedFile.Close()
+type RowSrc struct {
+	idx    int
+	meta   []helper.PriceDataRow
+	values []any
+	err    error
+}
 
-	aggregates, err := getAggregates(apiParams)
+func (r *RowSrc) Next() bool {
+	if r.idx > len(r.meta)-1 {
+		return false
+	}
+
+	item := r.meta[r.idx]
+	r.idx += 1
+
+	r.values = item.Slice()
+	return true
+}
+
+func (r *RowSrc) Values() ([]any, error) {
+	return r.values, r.err
+}
+
+func (r *RowSrc) Err() error {
+	return r.err
+}
+
+func NewRowSrc(value []helper.PriceDataRow) *RowSrc {
+	return &RowSrc{
+		meta: value,
+	}
+}
+
+func ImportStocks(apiParams *dataprovider.ApiParams) error {
+	postgresUrl := os.Getenv("POSTGRES_URL")
+	if postgresUrl == "" {
+		return errors.New("Please set POSTGRES_URL environment variable")
+	}
+
+	conn, err := pgx.Connect(context.Background(), postgresUrl)
+	if err != nil {
+		return errors.New(fmt.Sprintf(
+			"Unable to connect to database: %v\n", err,
+		))
+	}
+	defer conn.Close(context.Background())
+
+	candles, err := getAggregates(apiParams)
 	if err != nil {
 		return err
 	}
 
-	writer := csv.NewWriter(seedFile)
-	defer writer.Flush()
-
-	err = writer.Write(helper.StocksCsvColumns)
+	_, err = conn.CopyFrom(
+		context.Background(),
+		pgx.Identifier{apiParams.Table},
+		helper.PriceDataColumnNames,
+		NewRowSrc(candles),
+	)
 	if err != nil {
 		return err
-	}
-
-	for _, instrument := range aggregates {
-		for _, timeSeriesValue := range instrument.TimeSeries {
-			row := []string{
-				timeSeriesValue.DateTime,
-				instrument.MetaData.Symbol,
-				timeSeriesValue.Open,
-				timeSeriesValue.Close,
-				timeSeriesValue.High,
-				timeSeriesValue.Low,
-				timeSeriesValue.Volume,
-				instrument.MetaData.Currency,
-				string(dataprovider.TwelveData),
-			}
-			err = writer.Write(row)
-			if err != nil {
-				return err
-			}
-		}
 	}
 
 	return nil
 }
 
-func getAggregates(apiParams *dataprovider.ApiParams) (map[string]Instrument, error) {
+func getAggregates(apiParams *dataprovider.ApiParams) ([]helper.PriceDataRow, error) {
 	apiKey := os.Getenv("TWELVEDATA_API_KEY")
 	if apiKey == "" {
 		// TODO: Set up an alternative to enter the API key in the CLI via
@@ -151,14 +167,36 @@ func getAggregates(apiParams *dataprovider.ApiParams) (map[string]Instrument, er
 		return nil, err
 	}
 
-	var responseBody map[string]Instrument
+	var responseBody map[string]ApiResponse
 	err = json.Unmarshal(body, &responseBody)
 	if err != nil {
 		fmt.Fprint(os.Stderr, "body: ", string(body), "\n")
 		return nil, err
 	}
 
-	return responseBody, nil
+	var values []helper.PriceDataRow
+	for _, instrument := range responseBody {
+		for _, timeSeriesValue := range instrument.TimeSeries {
+			t, err := time.Parse(apiTimestamp, timeSeriesValue.DateTime)
+			if err != nil {
+				return nil, err
+			}
+
+			values = append(values, helper.PriceDataRow{
+				Time:         t,
+				Symbol:       instrument.MetaData.Symbol,
+				Open:         timeSeriesValue.Open,
+				Close:        timeSeriesValue.Close,
+				High:         timeSeriesValue.High,
+				Low:          timeSeriesValue.Low,
+				Volume:       timeSeriesValue.Volume,
+				Currency:     instrument.MetaData.Currency,
+				DataProvider: string(dataprovider.TwelveData),
+			})
+		}
+	}
+
+	return values, nil
 }
 
 func mapTimespan(timespan dataprovider.Timespan) (Timespan, error) {

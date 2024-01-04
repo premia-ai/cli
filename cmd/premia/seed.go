@@ -9,7 +9,7 @@ import (
 )
 
 var seedCmd = &cobra.Command{
-	Use:   "init",
+	Use:   "seed",
 	Short: "Seed your financial database with instrument data",
 	Args:  cobra.ExactArgs(0),
 	Run: func(cmd *cobra.Command, args []string) {
