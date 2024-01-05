@@ -323,7 +323,7 @@ func Seed() error {
 				return err
 			}
 
-			err = polygon.ImportStocks(&dataprovider.ApiParams{
+			err = polygon.ImportMarketData(&dataprovider.ApiParams{
 				Tickers:  []string{ticker},
 				From:     fromTime,
 				To:       toTime,
@@ -387,7 +387,7 @@ func Seed() error {
 				return err
 			}
 
-			err = twelvedata.ImportStocks(&dataprovider.ApiParams{
+			err = twelvedata.ImportMarketData(&dataprovider.ApiParams{
 				Tickers:  tickers,
 				Timespan: timespan.Value,
 				Quantity: 1,

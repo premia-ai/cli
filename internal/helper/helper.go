@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-var PriceDataColumnNames = []string{
+var MarketDataColumnNames = []string{
 	"time",
 	"symbol",
 	"open",
@@ -24,7 +24,7 @@ var PriceDataColumnNames = []string{
 	"data_provider",
 }
 
-type PriceDataRow struct {
+type MarketDataRow struct {
 	Time         time.Time
 	Symbol       string
 	Open         string
@@ -36,9 +36,9 @@ type PriceDataRow struct {
 	DataProvider string
 }
 
-func (p *PriceDataRow) Slice() []any {
-	values := make([]any, len(PriceDataColumnNames))
-	for idx, columnName := range PriceDataColumnNames {
+func (p *MarketDataRow) Slice() []any {
+	values := make([]any, len(MarketDataColumnNames))
+	for idx, columnName := range MarketDataColumnNames {
 		switch columnName {
 		case "time":
 			pgTimestamptz := pgtype.Timestamptz{}

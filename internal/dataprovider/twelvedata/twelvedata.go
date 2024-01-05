@@ -55,7 +55,7 @@ type TimeSeriesValue struct {
 
 type RowSrc struct {
 	idx    int
-	meta   []helper.PriceDataRow
+	meta   []helper.MarketDataRow
 	values []any
 	err    error
 }
@@ -80,13 +80,13 @@ func (r *RowSrc) Err() error {
 	return r.err
 }
 
-func NewRowSrc(value []helper.PriceDataRow) *RowSrc {
+func NewRowSrc(value []helper.MarketDataRow) *RowSrc {
 	return &RowSrc{
 		meta: value,
 	}
 }
 
-func ImportStocks(apiParams *dataprovider.ApiParams) error {
+func ImportMarketData(apiParams *dataprovider.ApiParams) error {
 	postgresUrl := os.Getenv("POSTGRES_URL")
 	if postgresUrl == "" {
 		return errors.New("Please set POSTGRES_URL environment variable")
@@ -108,7 +108,7 @@ func ImportStocks(apiParams *dataprovider.ApiParams) error {
 	_, err = conn.CopyFrom(
 		context.Background(),
 		pgx.Identifier{apiParams.Table},
-		helper.PriceDataColumnNames,
+		helper.MarketDataColumnNames,
 		NewRowSrc(candles),
 	)
 	if err != nil {
@@ -118,7 +118,7 @@ func ImportStocks(apiParams *dataprovider.ApiParams) error {
 	return nil
 }
 
-func getAggregates(apiParams *dataprovider.ApiParams) ([]helper.PriceDataRow, error) {
+func getAggregates(apiParams *dataprovider.ApiParams) ([]helper.MarketDataRow, error) {
 	apiKey := os.Getenv("TWELVEDATA_API_KEY")
 	if apiKey == "" {
 		// TODO: Set up an alternative to enter the API key in the CLI via
@@ -174,7 +174,7 @@ func getAggregates(apiParams *dataprovider.ApiParams) ([]helper.PriceDataRow, er
 		return nil, err
 	}
 
-	var values []helper.PriceDataRow
+	var values []helper.MarketDataRow
 	for _, instrument := range responseBody {
 		for _, timeSeriesValue := range instrument.TimeSeries {
 			t, err := time.Parse(apiTimestamp, timeSeriesValue.DateTime)
@@ -182,7 +182,7 @@ func getAggregates(apiParams *dataprovider.ApiParams) ([]helper.PriceDataRow, er
 				return nil, err
 			}
 
-			values = append(values, helper.PriceDataRow{
+			values = append(values, helper.MarketDataRow{
 				Time:         t,
 				Symbol:       instrument.MetaData.Symbol,
 				Open:         timeSeriesValue.Open,

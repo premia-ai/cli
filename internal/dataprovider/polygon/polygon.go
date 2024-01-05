@@ -40,7 +40,7 @@ func (r *RowSrc) Next() bool {
 	}
 
 	item := r.meta.iter.Item()
-	row := helper.PriceDataRow{
+	row := helper.MarketDataRow{
 		Time:         time.Time(item.Timestamp),
 		Open:         strconv.FormatFloat(item.Open, 'f', -1, 64),
 		Close:        strconv.FormatFloat(item.Close, 'f', -1, 64),
@@ -76,7 +76,7 @@ func NewRowSrc(ticker string, value *iter.Iter[models.Agg]) *RowSrc {
 const currency = "USD"
 
 // TODO: Extend polygon to allow for multiple tickers
-func ImportStocks(apiParams *dataprovider.ApiParams) error {
+func ImportMarketData(apiParams *dataprovider.ApiParams) error {
 	timespan, err := mapTimespan(apiParams.Timespan)
 	if err != nil {
 		return err
@@ -106,7 +106,7 @@ func ImportStocks(apiParams *dataprovider.ApiParams) error {
 	_, err = conn.CopyFrom(
 		context.Background(),
 		pgx.Identifier{apiParams.Table},
-		helper.PriceDataColumnNames,
+		helper.MarketDataColumnNames,
 		NewRowSrc(apiParams.Tickers[0], candles),
 	)
 	if err != nil {
